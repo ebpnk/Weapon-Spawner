@@ -9,6 +9,8 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Utils;
+using CounterStrikeSharp.API.Modules.Entities;
+using CounterStrikeSharp.API.Modules.Menu;
 
 
 
@@ -18,7 +20,7 @@ namespace WeaponSpawnerPlugin
     {
         private const string PluginAuthor = "DoctorishHD";
         private const string PluginName = "Weapon Spawner";
-        private const string PluginVersion = "1.0";
+        private const string PluginVersion = "2.0";
         private const string ConfigFileName = "config.json";
         private WeaponSpawnerConfig? config;
         private HashSet<CCSPlayerController> authenticatedSessions = new HashSet<CCSPlayerController>();
@@ -33,7 +35,7 @@ namespace WeaponSpawnerPlugin
             base.Load(hotReload);
             LoadConfig();
             AddCommand("css_givew", "Выдать себе оружие.", CommandSpawnWeapon);
-            AddCommand("css_givew_list", "Список оружия.", CommandListWeapons);
+            AddCommand("givek", "Выдать себе нож.", CommandGiveKnife);
         }
 
         private void LoadConfig()
@@ -61,7 +63,7 @@ namespace WeaponSpawnerPlugin
         }
         
 
-        private void CommandSpawnWeapon(CCSPlayerController? player, CommandInfo commandInfo)
+        private void CommandSpawnWeapon(CCSPlayerController player, CommandInfo commandInfo)
         {
             if (player == null || config == null)
             {
@@ -74,39 +76,73 @@ namespace WeaponSpawnerPlugin
                 return;
             }
 
-            string weaponName = commandInfo.ArgCount > 1 ? commandInfo.GetArg(1) : "";
-            if (string.IsNullOrEmpty(weaponName))
+            var weaponMenu = new ChatMenu("Выберите оружие");
+            foreach (var weapon in GetWeapons()) // Предположим, что у вас есть метод GetWeapons
             {
-                player?.PrintToChat("Используйте: css_givew <weapon_name>");
-                return;
+                weaponMenu.AddMenuOption(weapon, (p, o) => GiveWeapon(p, weapon)); // Предположим, что у вас есть метод GiveWeapon
             }
 
-            string weaponCode = ConvertWeaponNameToCode(weaponName);
-            if (string.IsNullOrEmpty(weaponCode))
-            {
-                player?.PrintToChat($"Оружие {weaponName} не найдено.");
-                return;
-            }
-
-            player.GiveNamedItem(weaponCode);
-            Console.WriteLine($"Оружие {weaponName} было создано!");
+            ChatMenus.OpenMenu(player, weaponMenu);
         }
 
-        private void CommandListWeapons(CCSPlayerController? player, CommandInfo commandInfo)
+        private IEnumerable<string> GetWeapons()
         {
-            if (player == null || config == null)
+            return new List<string>
             {
-                return;
-            }
+                "ak47",
+                "aug",
+                "scar-20",
+                "g3sg1",
+                "m4a1",
+                "m4a1-s",
+                "galil",
+                "sg553",
+                "awp",
+                "famas",
+                "ssg08",
+                "p90",
+                "mp9",
+                "mp7",
+                "ump-45",
+                "bizon",
+                "mac-10",
+                "mp5-sd",
+                "usp-s",
+                "p2000",
+                "tec-9",
+                "deagle",
+                "five-seveN",
+                "dual-berettas",
+                "p250",
+                "cz75a",
+                "glock-18",
+                "r8",
+                "xm1014",
+                "nova",
+                "sawed-off",
+                "mag-7",
+                "negev",
+                "m249",
+                "knifegg",
+                "taser",
+                "smoke",
+                "bumpmine",
+                "decoy",
+                "molotov",
+                "hegrenade",
+                "incgrenade",
+                "flash"
+            };
+        }
 
-            if (!IsAdminWithFlag(player, config.ListWeaponsPermissionFlag))
+        private void GiveWeapon(CCSPlayerController player, string weaponName)
+        {
+            var weaponCode = ConvertWeaponNameToCode(weaponName);
+            if (!string.IsNullOrEmpty(weaponCode))
             {
-                player.PrintToChat("У вас нет разрешения на использование этой команды.");
-                return;
+                player.GiveNamedItem(weaponCode);
+                Console.WriteLine($"Оружие {weaponName} было создано!");
             }
-
-            string weaponList = GetWeaponList();
-            player?.PrintToChat(weaponList);
         }
 
         private string ReplaceColorPlaceholders(string message)
@@ -246,6 +282,83 @@ namespace WeaponSpawnerPlugin
             }
         }
 
+        private void CommandGiveKnife(CCSPlayerController player, CommandInfo commandInfo)
+        {
+            if (player == null || config == null)
+            {
+                return;
+            }
+
+            if (!IsAdminWithFlag(player, config.GiveKnifePermissionFlag)) // Используйте новый флаг из конфигурации
+            {
+                player.PrintToChat("У вас нет разрешения на использование этой команды.");
+                return;
+            }
+
+            var knifeMenu = new ChatMenu("Выберите нож");
+            foreach (var knife in GetKnives())
+            {
+                knifeMenu.AddMenuOption(knife.Key, (p, o) => GiveKnife(p, knife.Value));
+            }
+
+            ChatMenus.OpenMenu(player, knifeMenu);
+        }
+
+        private void RemoveCurrentKnife(CCSPlayerController player)
+        {
+            var weapons = player.PlayerPawn.Value.WeaponServices.MyWeapons;
+            foreach (var weapon in weapons)
+            {
+                if (weapon != null && weapon.IsValid && IsKnife(weapon.Value.DesignerName))
+                {
+                    weapon.Value.Remove(); // Удаляем нож
+                    break;
+                }
+            }
+        }
+
+        private static bool IsKnife(string weaponName)
+        {
+            return !string.IsNullOrEmpty(weaponName) && 
+                (weaponName.Contains("knife") || weaponName.Contains("bayonet"));
+        }
+
+
+        private Dictionary<string, string> GetKnives()
+        {
+            return new Dictionary<string, string>
+            {
+                { "Кукри", "weapon_knife_kukri" },
+                { "Классический нож", "weapon_knife_css" },
+                { "Призрачный нож", "weapon_knife_ghost" },
+                { "Штык нож", "weapon_bayonet" },
+                { "Складной нож", "weapon_knife_flip" },
+                { "Нож с лезвием крюком", "weapon_knife_gut" },
+                { "Керамбит", "weapon_knife_karambit" },
+                { "M9 Bayonet", "weapon_knife_m9_bayonet" },
+                { "Охотничий нож", "weapon_knife_tactical" },
+                { "Бабочка", "weapon_knife_butterfly" },
+                { "Тычки", "weapon_knife_push" },
+                { "Фальшион", "weapon_knife_falchion" },
+                { "Боуви", "weapon_knife_survival_bowie" },
+                { "Медвежий", "weapon_knife_ursus" },
+                { "Наваха", "weapon_knife_gypsy_jackknife" },
+                { "Стилет", "weapon_knife_stiletto" },
+                { "Коготь", "weapon_knife_widowmaker" },
+                // { "Другой нож", "weapon_knife_..." } // Добавьте другие ножи, если они доступны в вашей игровой среде
+            };
+        }
+
+        private void GiveKnife(CCSPlayerController player, string knifeCommand)
+        {
+            // Удаляем текущий нож
+            RemoveCurrentKnife(player);
+
+            // Выдаем новый нож
+            player.GiveNamedItem(knifeCommand);
+            // Дополнительные действия для настройки ножа, если требуется
+        }
+
         private bool IsAdminWithFlag(CCSPlayerController? player, string? flag)
         {
             if (player == null || flag == null) return false;
@@ -253,10 +366,11 @@ namespace WeaponSpawnerPlugin
             return AdminManager.PlayerHasPermissions(player, flag);
         }
     }
+
     public class WeaponSpawnerConfig
     {
         public string? AdminFlag { get; set; } = "@css/weaponspawner";
         public string? SpawnWeaponPermissionFlag { get; set; } = "@css/givew";
-        public string? ListWeaponsPermissionFlag { get; set; } = "@css/listw";
+        public string? GiveKnifePermissionFlag { get; set; } = "@css/givek"; // Новый флаг
     }
 }
